@@ -1,7 +1,7 @@
 import streamlit as st
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
-from langchain.text_splitter import CharacterTextSplitter
+from langchain_text_splitters import CharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain.chains import ConversationalRetrievalChain
@@ -66,7 +66,7 @@ def handle_user_input(user_question):
 
 def main():
     load_dotenv()
-    st.set_page_config(page_title="School Assistant", page_icon="💬", layout="wide")
+    st.set_page_config(page_title="YOUR CHEMISTRY AND PHYSICS ASSISTANT", page_icon=":atom_symbol:", layout="wide")
     st.write(css, unsafe_allow_html=True)
 
     if "conversation" not in st.session_state:
@@ -111,7 +111,6 @@ def main():
                 
                 uploaded_vector_store = get_vector_store(text_chunks)
 
-                # Combine default vector DB and uploaded PDFs so retrieval uses both.
                 existing_vector_store = get_existing_vector_store()
                 if existing_vector_store is not None:
                     existing_vector_store.merge_from(uploaded_vector_store)

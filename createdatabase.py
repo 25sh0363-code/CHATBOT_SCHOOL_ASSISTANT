@@ -3,7 +3,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from langchain_openai import OpenAIEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 
 
