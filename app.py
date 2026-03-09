@@ -1,6 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import base64
+import re
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from langchain_text_splitters import CharacterTextSplitter
@@ -11,6 +12,39 @@ from langchain.memory import ConversationBufferMemory
 from langchain_core.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage
 from htmltemplates import css, user_template, bot_template
+
+
+def make_math_readable(text: str) -> str:
+    if not text:
+        return text
+
+    # Strip common LaTeX wrappers so formulas are readable in plain chat bubbles.
+    text = text.replace("\\[", "").replace("\\]", "")
+    text = text.replace("\\(", "").replace("\\)", "")
+
+    # Convert frequent LaTeX commands to plain-text equivalents.
+    text = re.sub(r"\\\\sqrt\{([^}]*)\}", r"sqrt(\1)", text)
+    text = re.sub(r"\\\\frac\{([^}]*)\}\{([^}]*)\}", r"(\1)/(\2)", text)
+    text = re.sub(r"\\\\mathbf\{([^}]*)\}", r"\1", text)
+    text = re.sub(r"\\\\text\{([^}]*)\}", r"\1", text)
+
+    replacements = {
+        "\\theta": "theta",
+        "\\alpha": "alpha",
+        "\\beta": "beta",
+        "\\gamma": "gamma",
+        "\\Delta": "Delta",
+        "\\times": "x",
+        "\\cdot": "*",
+        "\\cos": "cos",
+        "\\sin": "sin",
+        "\\tan": "tan",
+        "\\pi": "pi",
+    }
+    for src, dst in replacements.items():
+        text = text.replace(src, dst)
+
+    return text.replace("\\", "").strip()
 
 
 def get_pdf_text(pdf_files):
@@ -52,6 +86,7 @@ def get_conversation_chain(vector_store):
             "If you use your own knowledge, mention: 'Based on general chemistry/physics knowledge'.\n"
             "if mentioned to refer to textbook,strictly refer to vector store retrieved context and do not make up any information.\n"
             "if no relevant information is found in the retrieved context, say 'The provided materials do not contain information relevant to this question.'\n"
+            "Write equations in plain text only (example: R = sqrt(A^2 + B^2 + 2AB cos(theta))). Do not use LaTeX.\n"
             "Give concise, correct explanations and include examples when helpful.\n\n"
             "Context:\n{context}\n\n"
             "Question: {question}\n"
@@ -79,9 +114,11 @@ def handle_user_input(user_question):
     if st.session_state.conversation is None:
         st.warning("No knowledge base is loaded. Build default DB first or upload PDFs and click Process.")
         return
-    
 
     response = st.session_state.conversation({"question": user_question})
+    for message in response["chat_history"]:
+        if isinstance(message, AIMessage):
+            message.content = make_math_readable(str(message.content))
     st.session_state.chat_history = response["chat_history"]
 
 
@@ -111,6 +148,7 @@ def handle_user_input_with_image(user_question, image_file):
         "You are a chemistry and physics tutor. Analyze the attached image and answer the question.\n"
         "Use retrieved textbook context first when relevant, then complete with your own knowledge.\n"
         "If the image includes formulas/structures/diagrams, interpret them clearly.\n\n"
+        "Write equations in plain text only (example: R = sqrt(A^2 + B^2 + 2AB cos(theta))). Do not use LaTeX.\n"
         "if mentioned to refer to textbook,strictly refer to vector store retrieved context and do not make up any information.\n"
         "if no relevant information is found in the retrieved context, say 'The provided materials do not contain information relevant to this question.'\n"
         f"Retrieved context:\n{retrieved_context if retrieved_context else 'No additional context retrieved.'}\n\n"
@@ -136,7 +174,7 @@ def handle_user_input_with_image(user_question, image_file):
         st.session_state.chat_history = []
 
     st.session_state.chat_history.append(HumanMessage(content=f"{user_question} (with image)"))
-    st.session_state.chat_history.append(AIMessage(content=ai_message.content))
+    st.session_state.chat_history.append(AIMessage(content=make_math_readable(str(ai_message.content))))
 
 
 def render_chat_history():
@@ -147,7 +185,7 @@ def render_chat_history():
         if i % 2 == 0:
             st.write(user_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
         else:
-            st.write(bot_template.replace("{{MSG}}", message.content), unsafe_allow_html=True)
+            st.write(bot_template.replace("{{MSG}}", make_math_readable(str(message.content))), unsafe_allow_html=True)
 
 
                                                                 
