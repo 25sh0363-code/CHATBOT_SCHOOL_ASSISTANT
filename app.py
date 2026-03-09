@@ -58,9 +58,23 @@ def get_pdf_text(pdf_files):
 
 def get_existing_vector_store():
     try:
-        return FAISS.load_local("vectorstore/faiss_index",OpenAIEmbeddings(),allow_dangerous_deserialization=True,)
+        return FAISS.load_local(
+            "vectorstore/faiss_index",
+            get_embeddings(),
+            allow_dangerous_deserialization=True,
+        )
     except Exception:
         return None
+
+
+@st.cache_resource(show_spinner=False)
+def get_embeddings():
+    return OpenAIEmbeddings()
+
+
+@st.cache_resource(show_spinner=False)
+def get_default_vector_store_cached():
+    return get_existing_vector_store()
 
 def get_text_chunks(text):
     text_splitter = CharacterTextSplitter(
@@ -73,9 +87,23 @@ def get_text_chunks(text):
     return chunks
 
 def get_vector_store(text_chunks):
-    embeddings = OpenAIEmbeddings()
-    vector_store = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
+    vector_store = FAISS.from_texts(texts=text_chunks, embedding=get_embeddings())
     return vector_store
+
+
+def ensure_conversation_ready() -> bool:
+    if st.session_state.conversation is not None:
+        return True
+
+    if st.session_state.vector_store is None:
+        with st.spinner("Loading default knowledge base..."):
+            st.session_state.vector_store = get_default_vector_store_cached()
+
+    if st.session_state.vector_store is None:
+        return False
+
+    st.session_state.conversation = get_conversation_chain(st.session_state.vector_store)
+    return True
 
 def get_conversation_chain(vector_store):
     qa_prompt = PromptTemplate(
@@ -201,18 +229,11 @@ def main():
     if "vector_store" not in st.session_state:
         st.session_state.vector_store = None
 
-    if st.session_state.conversation is None:
-        existing_vector_store = get_existing_vector_store()
-        if existing_vector_store is not None:
-            st.session_state.vector_store = existing_vector_store
-            st.session_state.conversation = get_conversation_chain(existing_vector_store)
-    
-
     st.title("School Assistant")
     st.caption("Ask from your default knowledge base, then optionally enhance with extra PDFs.")
 
     if st.session_state.conversation is None:
-        st.info("No usable default data found yet. Put PDFs in /data or upload PDFs from sidebar and click Process.")
+        st.info("Default knowledge base will load on first question. You can also upload PDFs from the sidebar and click Process.")
 
     user_question = st.chat_input("Ask a question about physics or chemistry...")
     add_image = st.file_uploader(
@@ -221,6 +242,10 @@ def main():
         key="image_uploader",
     )
     if user_question:
+        if not ensure_conversation_ready():
+            st.warning("No knowledge base is loaded. Upload PDFs and click Process.")
+            return
+
         if add_image is not None:
             handle_user_input_with_image(user_question, add_image)
         else:
@@ -255,7 +280,9 @@ def main():
                 
                 uploaded_vector_store = get_vector_store(text_chunks)
 
-                existing_vector_store = get_existing_vector_store()
+                existing_vector_store = st.session_state.vector_store
+                if existing_vector_store is None:
+                    existing_vector_store = get_default_vector_store_cached()
                 if existing_vector_store is not None:
                     existing_vector_store.merge_from(uploaded_vector_store)
                     final_vector_store = existing_vector_store
@@ -266,6 +293,23 @@ def main():
 
                 st.session_state.vector_store = final_vector_store
                 st.session_state.conversation = get_conversation_chain(final_vector_store)
+                get_default_vector_store_cached.clear()
+        st.table(st.title("quick math symbols to copy and paste into your questions for better formatting")
+                 [
+                    {"Symbol": "theta", "Copy": "theta"},
+                    {"Symbol": "alpha", "Copy": "alpha"},
+                    {"Symbol": "beta", "Copy": "beta"},
+                    {"Symbol": "gamma", "Copy": "gamma"},
+                    {"Symbol": "Delta", "Copy": "Delta"},
+                    {"Symbol": "times", "Copy": "times"},
+                    {"Symbol": "cdot", "Copy": "cdot"},
+                    {"Symbol": "cos", "Copy": "cos"},
+                    {"Symbol": "sin", "Copy": "sin"},
+                    {"Symbol": "tan", "Copy": "tan"},
+                    {"Symbol": "pi", "Copy": "pi"},
+                 ]
+            
+        )
 
 
 
