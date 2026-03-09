@@ -4,7 +4,7 @@ import base64
 import re
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
-from langchain_text_splitters import CharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain.chains import ConversationalRetrievalChain
@@ -12,6 +12,9 @@ from langchain.memory import ConversationBufferMemory
 from langchain_core.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage, AIMessage
 from htmltemplates import css, user_template, bot_template
+
+
+EMBEDDING_MODEL = "text-embedding-3-small"
 
 
 def make_math_readable(text: str) -> str:
@@ -69,7 +72,7 @@ def get_existing_vector_store():
 
 @st.cache_resource(show_spinner=False)
 def get_embeddings():
-    return OpenAIEmbeddings()
+    return OpenAIEmbeddings(model=EMBEDDING_MODEL)
 
 
 @st.cache_resource(show_spinner=False)
@@ -77,8 +80,8 @@ def get_default_vector_store_cached():
     return get_existing_vector_store()
 
 def get_text_chunks(text):
-    text_splitter = CharacterTextSplitter(
-        separator="\n",
+    text_splitter = RecursiveCharacterTextSplitter(
+        separators=["\n\n", "\n", ". ", " ", ""],
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len
@@ -112,8 +115,8 @@ def get_conversation_chain(vector_store):
             "Use the retrieved context first.\n"
             "If context is incomplete, use your own subject knowledge to answer clearly.\n"
             "If you use your own knowledge, mention: 'Based on general chemistry/physics knowledge'.\n"
-            "if mentioned to refer to textbook,strictly refer to vector store retrieved context and do not make up any information.\n"
-            "if no relevant information is found in the retrieved context, say 'The provided materials do not contain information relevant to this question.'\n"
+            "If the user explicitly asks to answer from textbook/materials only, strictly use retrieved context and do not add outside facts.\n"
+            "Only in that textbook-only mode: if no relevant information is found, say 'The provided materials do not contain information relevant to this question.'.\n"
             "Write equations in plain text only (example: R = sqrt(A^2 + B^2 + 2AB cos(theta))). Do not use LaTeX.\n"
             "Give concise, correct explanations and include examples when helpful.\n\n"
             "Context:\n{context}\n\n"
@@ -126,8 +129,9 @@ def get_conversation_chain(vector_store):
     llm = ChatOpenAI(model_name="gpt-4.1-nano", temperature=0)
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
     retriever = vector_store.as_retriever(
-        search_type="mmr",
-        search_kwargs={"k": 8, "fetch_k": 24},
+        # Similarity retrieval is more stable than MMR for broad chapter/topic queries.
+        search_type="similarity",
+        search_kwargs={"k": 12},
     )
 
     conversation_chain = ConversationalRetrievalChain.from_llm(
@@ -156,8 +160,8 @@ def get_retrieved_context(question: str) -> str:
         return ""
 
     docs = vector_store.as_retriever(
-        search_type="mmr",
-        search_kwargs={"k": 4, "fetch_k": 16},
+        search_type="similarity",
+        search_kwargs={"k": 8},
     ).get_relevant_documents(question)
 
     if not docs:
@@ -177,8 +181,8 @@ def handle_user_input_with_image(user_question, image_file):
         "Use retrieved textbook context first when relevant, then complete with your own knowledge.\n"
         "If the image includes formulas/structures/diagrams, interpret them clearly.\n\n"
         "Write equations in plain text only (example: R = sqrt(A^2 + B^2 + 2AB cos(theta))). Do not use LaTeX.\n"
-        "if mentioned to refer to textbook,strictly refer to vector store retrieved context and do not make up any information.\n"
-        "if no relevant information is found in the retrieved context, say 'The provided materials do not contain information relevant to this question.'\n"
+        "If the user explicitly asks to answer from textbook/materials only, strictly use retrieved context and do not add outside facts.\n"
+        "Only in that textbook-only mode: if no relevant information is found, say 'The provided materials do not contain information relevant to this question.'.\n"
         f"Retrieved context:\n{retrieved_context if retrieved_context else 'No additional context retrieved.'}\n\n"
         f"Question: {user_question}"
     )
