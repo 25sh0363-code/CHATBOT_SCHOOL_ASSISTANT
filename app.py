@@ -50,6 +50,8 @@ def get_conversation_chain(vector_store):
             "Use the retrieved context first.\n"
             "If context is incomplete, use your own subject knowledge to answer clearly.\n"
             "If you use your own knowledge, mention: 'Based on general chemistry/physics knowledge'.\n"
+            "if mentioned to refer to textbook,strictly refer to vector store retrieved context and do not make up any information.\n"
+            "if no relevant information is found in the retrieved context, say 'The provided materials do not contain information relevant to this question.'\n"
             "Give concise, correct explanations and include examples when helpful.\n\n"
             "Context:\n{context}\n\n"
             "Question: {question}\n"
@@ -109,6 +111,8 @@ def handle_user_input_with_image(user_question, image_file):
         "You are a chemistry and physics tutor. Analyze the attached image and answer the question.\n"
         "Use retrieved textbook context first when relevant, then complete with your own knowledge.\n"
         "If the image includes formulas/structures/diagrams, interpret them clearly.\n\n"
+        "if mentioned to refer to textbook,strictly refer to vector store retrieved context and do not make up any information.\n"
+        "if no relevant information is found in the retrieved context, say 'The provided materials do not contain information relevant to this question.'\n"
         f"Retrieved context:\n{retrieved_context if retrieved_context else 'No additional context retrieved.'}\n\n"
         f"Question: {user_question}"
     )
@@ -147,9 +151,6 @@ def render_chat_history():
 
 
                                                                 
-
-
-
 def main():
     load_dotenv()
     st.set_page_config(page_title="YOUR CHEMISTRY AND PHYSICS ASSISTANT", page_icon=":atom_symbol:", layout="wide")
